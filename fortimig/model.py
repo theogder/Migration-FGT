@@ -109,6 +109,9 @@ class Document:
     header: list[RawLine] = field(default_factory=list)
     children: list[Node] = field(default_factory=list)
     newline: str = "\n"
+    # Pas d'indentation des nœuds régénérés : 4 espaces, ou "" si le fichier
+    # source n'est pas indenté.
+    indent_step: str = "    "
     # Avertissements de parsing (numéros de ligne seulement, jamais de contenu).
     warnings: list[str] = field(default_factory=list)
 

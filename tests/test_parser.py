@@ -108,6 +108,35 @@ def test_header_is_separated_from_body() -> None:
     assert isinstance(doc.children[0], ConfigBlock)
 
 
+def test_header_with_blank_line_as_observed() -> None:
+    doc = parse(fixture_bytes("flat.conf").decode())
+    assert [h.text.strip().split("=")[0] for h in doc.header] == [
+        "#config-version", "", "#version", "#build", "#branch_pt", "#platform",
+    ]
+    first = doc.children[0]
+    assert isinstance(first, ConfigBlock) and first.name == "vdom"
+
+
+def test_blank_lines_after_header_are_body() -> None:
+    doc = parse("#config-version=X\n\nconfig a\nend\n")
+    assert len(doc.header) == 1
+    assert isinstance(doc.children[0], RawLine)
+
+
+def test_flat_file_regenerates_without_indentation() -> None:
+    doc = parse(fixture_bytes("flat.conf").decode())
+    assert doc.indent_step == ""
+    glob = next(c for c in doc.children if isinstance(c, ConfigBlock) and c.name == "global")
+    new = ConfigBlock(("system", "exemple"))
+    new.children.append(Command("set", "x", [Token.make("1", quoted=False)]))
+    glob.children.append(new)
+    assert "\nconfig system exemple\nset x 1\nend\nend\n" in serialize(doc)
+
+
+def test_indented_file_keeps_four_spaces() -> None:
+    assert parse(fixture_bytes("simple.conf").decode()).indent_step == "    "
+
+
 def test_lists_and_order_preserved() -> None:
     doc = parse(fixture_bytes("simple.conf").decode())
     policy = next(c for c in doc.children if isinstance(c, ConfigBlock) and c.name == "firewall policy")

@@ -46,7 +46,6 @@ def _detect_newline(text: str) -> str:
 def parse(text: str) -> Document:
     doc = Document(newline=_detect_newline(text))
     stack: list[Container] = []
-    in_header = True
 
     def children() -> list[Node]:
         return stack[-1].children if stack else doc.children
@@ -56,12 +55,24 @@ def parse(text: str) -> Document:
     except LexError as exc:
         raise ParseError(exc.line, exc.message) from None
 
-    for ll in lines:
-        # En-tête : lignes "#..." en tout début de fichier.
-        if in_header and ll.is_comment and not stack:
-            doc.header.append(RawLine(ll.raw, ll.line))
-            continue
-        in_header = False
+    # Style d'indentation : certains backups (ex. celui du 300E observé)
+    # n'indentent pas du tout ; les nœuds régénérés suivent alors ce style.
+    if not any(ll.indent for ll in lines if ll.tokens):
+        doc.indent_step = ""
+
+    # En-tête : lignes "#..." en tout début de fichier. Les lignes vides
+    # intercalées en font partie (observé : ligne vide après #config-version),
+    # mais pas les lignes vides qui suivent le dernier "#".
+    header_end = 0
+    for i, ll in enumerate(lines):
+        if ll.is_comment:
+            header_end = i + 1
+        elif not ll.is_blank:
+            break
+    for ll in lines[:header_end]:
+        doc.header.append(RawLine(ll.raw, ll.line))
+
+    for ll in lines[header_end:]:
 
         if ll.is_comment or ll.is_blank:
             children().append(RawLine(ll.raw, ll.line))

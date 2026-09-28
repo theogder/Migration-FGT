@@ -16,6 +16,7 @@ l'ingénieur de production, et incertitudes FortiOS en suspens.
 | D7 | `secondary-ha.txt` | Copie intégrale du bloc `config system ha` du primaire converti, priorité remplacée, `set password <A_RENSEIGNER>`, précédée de `config system global` / `set hostname`. Pas de commentaires `#` dans le fichier ; les remarques vont dans le rapport. L'IP de management réservée du secondaire est seulement signalée. |
 | D8 | `check` | Références introuvables en `A_REVOIR`. Les objets intégrés absents des backups sont déclarés dans une liste modifiable. |
 | D9 | `sanitize --ips` | Anonymisation préservant les préfixes, graine optionnelle. Masques et adresses spéciales inchangés. La distinction privé / public est **conservée** (une adresse privée reste dans sa plage privée). IPv6 non traité (non utilisé). |
+| D11 | Flux git | À partir de l'étape 3 : travail directement sur `main`, plus de branches de travail. |
 | D10 | Sortie de `convert` | `DIR/converted.conf`, `DIR/secondary-ha.txt`, `DIR/report.md`, `DIR/report.json`. |
 
 ## Choix d'implémentation (à valider au fil de l'eau)
@@ -30,6 +31,11 @@ l'ingénieur de production, et incertitudes FortiOS en suspens.
 | I6 | `sanitize --ips` : adresses de réseau | Une adresse suivie d'un masque (`set subnet A M`) ou en notation `A/len`, à bits d'hôte nuls, est remplacée par `f(A) & masque` : l'image reste une adresse de réseau et contient l'image de ses hôtes. Les masques ne sont jamais modifiés. |
 | I7 | `sanitize --names` : périmètre | Clés d'`edit` entre guillemets (hors interfaces physiques), noms de VDOM (sauf `root`), options `name`, `hostname`, `alias`, `group-name`, `username`, et commentaires (`comment`, `comments`, `description`). Remplacement par jeton exact, uniquement sur les valeurs entre guillemets : les mots-clés ne sont jamais touchés. **Non couverts** (signalés en nombre) : `fqdn`, `dn`, `server`, `domain`, `email`… à relire avant partage. |
 | I8 | `sanitize` : lignes non reconnues | Masquées entièrement (`# <LIGNE MASQUEE PAR SANITIZE>`), leur contenu n'ayant pas pu être analysé. L'en-tête `#config-version` est conservé. |
+| I9 | En-tête | Toutes les lignes `#` de début de fichier, lignes vides intercalées comprises (observé sur le 300E : ligne vide après `#config-version`). |
+| I10 | Indentation | Fichier sans aucune indentation (observé sur le 300E) : les nœuds régénérés ne sont pas indentés non plus. |
+| I11 | Emplacements de noms d'interface | Table `INTERFACE_REFS` de `fortimig/interfaces.py` : (option, bloc englobant éventuel), chaque entrée justifiée. `member` restreint à `system interface` / `system switch-interface` ; `hbdev` traité par paires nom / priorité. Clés d'`edit` : `system interface`, `system dns-server`. Tout autre jeton égal à un ancien nom est signalé « référence non couverte ». |
+| I12 | Options propres au port | `speed`, `mediatype`, `forward-error-correction`, `snmp-index` et `dedicated-to` (validé) signalées en `A_REVOIR` sur **tous** les ports mappés, y compris à l'identique (un `port1` peut être SFP sur la source et RJ45 sur la cible). |
+| I13 | Cohérence du mapping | `ERREUR` : port physique non mappé, cible absente de `target-default.conf`, cible attribuée deux fois, interface logique dans le mapping, cible portant le nom d'une interface logique. `A_REVOIR` : entrée du mapping sans interface dans la source. |
 
 ## Incertitudes FortiOS en suspens
 
@@ -38,10 +44,12 @@ l'ingénieur de production, et incertitudes FortiOS en suspens.
 | # | Point | Traitement actuel |
 |---|---|---|
 | U1 | Échappements entre guillemets : seuls `\"` et `\\` sont supposés. Guillemets simples supposés non délimiteurs. | Texte brut conservé : sans impact sur le round-trip, seulement sur la valeur décodée. |
-| U2 | Présence systématique de `set type physical` pour les ports physiques (y compris mgmt, ha, `npu0_vlink*`) dans un backup ; absence possible de `set type vlan` pour les VLAN (`vlan` étant le type par défaut). | Physique = `type physical`, ou `type` absent **et** pas de `vlanid` (prudent). À confirmer avant l'étape 3. |
+| U2 | **Levée** sur l'extrait du 300E : ports physiques `set type physical` (y compris `ha`, `mgmt`, `npu0_vlink0/1`) ; agrégats `set type aggregate` ; VLAN **sans** `set type`, avec `set vlanid`. | Physique = `type physical`, ou `type` absent et pas de `vlanid`. |
 | U3 | Existence de `config system npu` sur un 120G (SoC SP5). | Règle initiale en `flag`, pas en `remove`. |
 | U4 | Attribut `gateway-address` cité dans la SPEC : contexte inconnu. | À préciser. |
 | U5 | Format exact de `diagnose debug config-error-log read`. | Étape 8 sur extraits réels. |
 | U6 | `snmp-index` des ports repris du 300E : conflit possible sur le 120G. | `A_REVOIR`, non transformé. |
 | U8 | Liste des noms d'options secrètes (voir `fortimig/secrets.py`). | Masquage par dernier segment du nom (`password`, `secret`, `key`, `pwd`...), par valeur (`ENC`, PEM) et par contexte (communauté SNMP). Tout secret non détecté signalé par vos extraits sera ajouté. |
-| U7 | Indentation des blocs sous `config global` / `config vdom` dans un backup multi-VDOM (colonne 0 supposée). | Sans impact : texte brut conservé, les nœuds régénérés prennent l'indentation de leurs voisins. |
+| U7 | ~~Indentation en multi-VDOM~~ **levée** : l'extrait du 300E n'a aucune indentation (reste à savoir si c'est le format du fichier ou un effet du copier-coller). | Sans impact : les deux formes sont gérées (I10). |
+| U10 | Existence de `npu0_vlink0/1` sur le 120G (SoC SP5). Sur le 300E ce sont des ports « physiques » : ils doivent figurer dans le mapping (vers un port identique s'il existe sur la cible, sinon `drop`). Aucun traitement spécial codé (SPEC §11). | À vérifier dans `target-default.conf`. S'ils sont abandonnés, les VLAN inter-VDOM qu'ils portent sont signalés en `A_REVOIR` (décision d'architecture, hors outil). |
+| U9 | L'extrait du 300E est un **export FortiManager** (confirmé) : en-tête `#config-version=FG3H0E-7.00-FW-build2829-…:user=fortimanager`, `#version=700`, `#build`, `#branch_pt`, `#platform`, aucune indentation. « 7.00 » contredit la version 7.4.9 du boîtier ; le contenu d'un export FortiManager peut différer d'un backup du boîtier (format, syntaxe de la version d'ADOM, éléments absents) sans que l'on sache précisément en quoi. | Recommandation : utiliser pour `convert` un backup pris **directement sur le 300E** (SPEC §4 : « backup complet du 300E ») et en comparer l'en-tête. L'outil gère les deux formats. |
