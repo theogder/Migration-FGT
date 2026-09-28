@@ -1,20 +1,123 @@
-"""Interface en ligne de commande de fortimig (SPEC §8)."""
+"""Interface en ligne de commande de fortimig (SPEC §8).
+
+Toute sortie console passe par ``_Console``, qui applique la garde anti-fuite
+de secrets avant d'écrire.
+"""
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Callable, Sequence
+from pathlib import Path
 
 from fortimig import __version__
-from fortimig.report import EXIT_ERROR
+from fortimig.ipanon import DEFAULT_SEED
+from fortimig.model import Document
+from fortimig.parser import ENCODING, ERRORS, ParseError, load
+from fortimig.report import EXIT_ERROR, EXIT_OK
+from fortimig.sanitize import reference_names, sanitize
+from fortimig.secrets import LeakGuard
+from fortimig.serializer import serialize
 
 Handler = Callable[[argparse.Namespace], int]
+
+SENSITIVE_SUFFIX = ".SENSIBLE.json"
+
+
+class CliError(Exception):
+    """Erreur bloquante affichée sans trace. Le message ne contient aucun secret."""
+
+
+class _Console:
+    def __init__(self, guard: LeakGuard | None = None) -> None:
+        self.guard = guard
+
+    def _clean(self, text: str) -> str:
+        return self.guard.scrub(text) if self.guard else text
+
+    def out(self, text: str) -> None:
+        print(self._clean(text))
+
+    def err(self, text: str) -> None:
+        print(self._clean(text), file=sys.stderr)
+
+
+def _load(path: str, role: str) -> Document:
+    p = Path(path)
+    if not p.is_file():
+        raise CliError(f"{role} introuvable : {p}")
+    try:
+        return load(p)
+    except ParseError as exc:
+        # Le message de ParseError ne contient que des numéros de ligne.
+        raise CliError(f"{role} ({p.name}) : {exc}") from None
 
 
 def _not_implemented(args: argparse.Namespace) -> int:
     print(f"fortimig: la commande « {args.command} » n'est pas encore implémentée", file=sys.stderr)
     return EXIT_ERROR
+
+
+def _cmd_sanitize(args: argparse.Namespace) -> int:
+    src = Path(args.config)
+    out = Path(args.out)
+    if src.resolve() == out.resolve():
+        raise CliError("--out doit être différent de --config")
+
+    doc = _load(args.config, "configuration")
+    guard = LeakGuard.from_documents(doc)
+    console = _Console(guard)
+    keep: frozenset[str] = frozenset()
+    if args.keep_names_from:
+        keep = reference_names(_load(args.keep_names_from, "configuration de référence"))
+
+    for warning in doc.warnings:
+        console.err(f"avertissement : {warning}")
+    if args.ips and args.seed is None:
+        console.err(
+            "avertissement : graine par défaut ; l'anonymisation des IP est reproductible "
+            "par quiconque dispose de l'outil (utiliser --seed)"
+        )
+
+    result = sanitize(
+        doc,
+        ips=args.ips,
+        names=args.names,
+        seed=args.seed if args.seed is not None else DEFAULT_SEED,
+        keep_names=keep,
+    )
+    text = guard.scrub(serialize(result.document))
+    out.write_bytes(text.encode(ENCODING, ERRORS))
+
+    table_path: Path | None = None
+    if args.ips or args.names:
+        table_path = out.with_name(out.name + SENSITIVE_SUFFIX)
+        table = {
+            "AVERTISSEMENT": "FICHIER SENSIBLE : correspondance entre valeurs réelles et "
+            "valeurs anonymisées. Ne jamais le partager ni le committer.",
+            "ips": result.ip_table,
+            "noms": result.name_table,
+        }
+        payload = json.dumps(table, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        table_path.write_bytes(guard.scrub(payload).encode("utf-8"))
+
+    for warning in result.warnings:
+        console.err(f"avertissement : {warning}")
+    if guard.hits:
+        console.err(
+            f"avertissement : {guard.hits} occurrence(s) de valeurs secrètes masquée(s) "
+            "par la garde anti-fuite"
+        )
+    console.out(
+        f"sanitize : {result.secrets_masked} secret(s) masqué(s), "
+        f"{len(result.ip_table)} adresse(s) IP et {len(result.name_table)} nom(s) remplacés"
+    )
+    console.out(f"sortie : {out}")
+    if table_path is not None:
+        console.out(f"table de correspondance (SENSIBLE, ne pas partager) : {table_path}")
+    return EXIT_OK
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,9 +150,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("sanitize", help="produire une version anonymisée et partageable")
     p.add_argument("--config", required=True)
     p.add_argument("--out", required=True)
-    p.add_argument("--ips", action="store_true", help="remplacer les adresses IP")
+    p.add_argument("--ips", action="store_true", help="remplacer les adresses IPv4")
     p.add_argument("--names", action="store_true", help="remplacer les noms d'objets et commentaires")
-    p.set_defaults(handler=_not_implemented)
+    p.add_argument("--seed", help="graine de l'anonymisation des IP (recommandée)")
+    p.add_argument(
+        "--keep-names-from",
+        metavar="CONF",
+        help="configuration de référence (ex. target-default.conf) dont les noms sont conservés",
+    )
+    p.set_defaults(handler=_cmd_sanitize)
 
     p = sub.add_parser("errlog", help="analyser la sortie de 'diagnose debug config-error-log read'")
     p.add_argument("--log", required=True)
@@ -63,4 +172,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     handler: Handler = args.handler
-    return handler(args)
+    try:
+        return handler(args)
+    except CliError as exc:
+        print(f"fortimig: erreur : {exc}", file=sys.stderr)
+        return EXIT_ERROR
