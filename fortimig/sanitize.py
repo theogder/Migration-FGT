@@ -24,6 +24,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 
+from fortimig.fortios import is_physical_interface, physical_interfaces
 from fortimig.ipanon import DEFAULT_SEED, IPv4Anonymizer, parse_ipv4
 from fortimig.lexer import Token
 from fortimig.model import Command, ConfigBlock, Document, Edit, Node, RawLine
@@ -76,7 +77,7 @@ def sanitize(
             f"{result.lines_masked} ligne(s) non reconnue(s) ou commentaire(s) masqué(s)"
         )
     if names:
-        protected = BUILTIN_NAMES | keep_names | physical_interfaces(doc)
+        protected = BUILTIN_NAMES | keep_names | frozenset(physical_interfaces(doc))
         result.name_table = _collect_names(doc, protected)
         _replace_names(doc.children, result.name_table, in_vdom_table=False)
         identifying = _count_identifying(doc.children)
@@ -116,49 +117,6 @@ def _mask_raw_lines(nodes: list[Node]) -> int:
 
 
 # --- Noms ---------------------------------------------------------------------
-
-
-def physical_interfaces(doc: Document) -> frozenset[str]:
-    """Noms des interfaces physiques de ``doc``.
-
-    Voir ``is_physical_interface``.
-    """
-    found: set[str] = set()
-
-    def visit(nodes: list[Node]) -> None:
-        for node in nodes:
-            if isinstance(node, ConfigBlock):
-                if node.words == ("system", "interface"):
-                    for entry in node.children:
-                        if isinstance(entry, Edit) and is_physical_interface(entry):
-                            found.add(entry.name)
-                visit(node.children)
-            elif isinstance(node, Edit):
-                visit(node.children)
-
-    visit(doc.children)
-    return frozenset(found)
-
-
-def _set_value(entry: Edit, option: str) -> str | None:
-    for child in entry.children:
-        if isinstance(child, Command) and child.verb == "set" and child.option == option and child.args:
-            return child.args[0].value
-    return None
-
-
-def is_physical_interface(entry: Edit) -> bool:
-    """Entrée de ``config system interface`` considérée comme physique.
-
-    Hypothèse U2 (DECISIONS.md), à confirmer sur backup réel : les ports
-    physiques portent ``set type physical`` ; un VLAN peut ne pas avoir de
-    ``set type`` (``vlan`` étant le type par défaut, omis du backup). Une
-    entrée sans type et sans ``vlanid`` est protégée par prudence.
-    """
-    kind = _set_value(entry, "type")
-    if kind is not None:
-        return kind == "physical"
-    return _set_value(entry, "vlanid") is None
 
 
 def reference_names(doc: Document) -> frozenset[str]:

@@ -30,6 +30,11 @@ l'ingénieur de production, et incertitudes FortiOS en suspens.
 | I6 | `sanitize --ips` : adresses de réseau | Une adresse suivie d'un masque (`set subnet A M`) ou en notation `A/len`, à bits d'hôte nuls, est remplacée par `f(A) & masque` : l'image reste une adresse de réseau et contient l'image de ses hôtes. Les masques ne sont jamais modifiés. |
 | I7 | `sanitize --names` : périmètre | Clés d'`edit` entre guillemets (hors interfaces physiques), noms de VDOM (sauf `root`), options `name`, `hostname`, `alias`, `group-name`, `username`, et commentaires (`comment`, `comments`, `description`). Remplacement par jeton exact, uniquement sur les valeurs entre guillemets : les mots-clés ne sont jamais touchés. **Non couverts** (signalés en nombre) : `fqdn`, `dn`, `server`, `domain`, `email`… à relire avant partage. |
 | I8 | `sanitize` : lignes non reconnues | Masquées entièrement (`# <LIGNE MASQUEE PAR SANITIZE>`), leur contenu n'ayant pas pu être analysé. L'en-tête `#config-version` est conservé. |
+| I9 | En-tête | Toutes les lignes `#` de début de fichier, lignes vides intercalées comprises (observé sur le 300E : ligne vide après `#config-version`). |
+| I10 | Indentation | Fichier sans aucune indentation (observé sur le 300E) : les nœuds régénérés ne sont pas indentés non plus. |
+| I11 | Emplacements de noms d'interface | Table `INTERFACE_REFS` de `fortimig/interfaces.py` : (option, bloc englobant éventuel), chaque entrée justifiée. `member` restreint à `system interface` / `system switch-interface` ; `hbdev` traité par paires nom / priorité. Clés d'`edit` : `system interface`, `system dns-server`. Tout autre jeton égal à un ancien nom est signalé « référence non couverte ». |
+| I12 | Options propres au port | `speed`, `mediatype`, `forward-error-correction`, `snmp-index` signalées en `A_REVOIR` sur **tous** les ports mappés, y compris à l'identique (un `port1` peut être SFP sur la source et RJ45 sur la cible). |
+| I13 | Cohérence du mapping | `ERREUR` : port physique non mappé, cible absente de `target-default.conf`, cible attribuée deux fois, interface logique dans le mapping, cible portant le nom d'une interface logique. `A_REVOIR` : entrée du mapping sans interface dans la source. |
 
 ## Incertitudes FortiOS en suspens
 
@@ -38,10 +43,11 @@ l'ingénieur de production, et incertitudes FortiOS en suspens.
 | # | Point | Traitement actuel |
 |---|---|---|
 | U1 | Échappements entre guillemets : seuls `\"` et `\\` sont supposés. Guillemets simples supposés non délimiteurs. | Texte brut conservé : sans impact sur le round-trip, seulement sur la valeur décodée. |
-| U2 | Présence systématique de `set type physical` pour les ports physiques (y compris mgmt, ha, `npu0_vlink*`) dans un backup ; absence possible de `set type vlan` pour les VLAN (`vlan` étant le type par défaut). | Physique = `type physical`, ou `type` absent **et** pas de `vlanid` (prudent). À confirmer avant l'étape 3. |
+| U2 | ~~Présence de `set type physical` pour les ports physiques~~ **confirmée** sur l'extrait du 300E (`ha`, `mgmt`, `port1`). Reste à confirmer : absence de `set type` sur les VLAN, et forme des `npu0_vlink*`. | Physique = `type physical`, ou `type` absent **et** pas de `vlanid` (prudent). |
 | U3 | Existence de `config system npu` sur un 120G (SoC SP5). | Règle initiale en `flag`, pas en `remove`. |
 | U4 | Attribut `gateway-address` cité dans la SPEC : contexte inconnu. | À préciser. |
 | U5 | Format exact de `diagnose debug config-error-log read`. | Étape 8 sur extraits réels. |
 | U6 | `snmp-index` des ports repris du 300E : conflit possible sur le 120G. | `A_REVOIR`, non transformé. |
 | U8 | Liste des noms d'options secrètes (voir `fortimig/secrets.py`). | Masquage par dernier segment du nom (`password`, `secret`, `key`, `pwd`...), par valeur (`ENC`, PEM) et par contexte (communauté SNMP). Tout secret non détecté signalé par vos extraits sera ajouté. |
-| U7 | Indentation des blocs sous `config global` / `config vdom` dans un backup multi-VDOM (colonne 0 supposée). | Sans impact : texte brut conservé, les nœuds régénérés prennent l'indentation de leurs voisins. |
+| U7 | ~~Indentation en multi-VDOM~~ **levée** : l'extrait du 300E n'a aucune indentation (reste à savoir si c'est le format du fichier ou un effet du copier-coller). | Sans impact : les deux formes sont gérées (I10). |
+| U9 | En-tête du 300E : `#config-version=FG3H0E-7.00-FW-build2829-…:user=fortimanager`, `#version=700`, `#build=2829`, `#branch_pt=2829`, `#platform=FORTIGATE-300E`. « 7.00 » contredit la version 7.4.9 annoncée ; le build 2829 et ces lignes d'en-tête (différentes de `#conf_file_ver` / `#buildno` / `#global_vdom` attendus) suggèrent un fichier produit via FortiManager. **Non vérifié.** | À confirmer : `get system status` sur le 300E, et en-tête d'un backup pris directement sur le boîtier. `#platform` devra probablement être repris de la cible (`[header] from_target`). |

@@ -3,7 +3,8 @@
 Un nœud dont le contenu n'a pas changé depuis le parsing est réémis à partir
 de son texte brut (round-trip exact). Un nœud modifié ou créé est régénéré :
 son indentation est celle d'origine si elle est connue, sinon celle d'un nœud
-frère, sinon celle du parent + 4 espaces (convention des backups FortiOS).
+frère, sinon celle du parent + le pas du document (4 espaces, ou rien si le
+fichier source n'est pas indenté).
 """
 
 from __future__ import annotations
@@ -13,12 +14,9 @@ from pathlib import Path
 from fortimig.model import Command, ConfigBlock, Document, Edit, Node, RawLine
 from fortimig.parser import ENCODING, ERRORS
 
-INDENT_STEP = "    "
-
-
 def serialize(doc: Document) -> str:
     out: list[str] = [h.text for h in doc.header]
-    _emit_children(doc.children, "", out, doc.newline)
+    _emit_children(doc.children, "", out, doc.newline, doc.indent_step)
     return "".join(out)
 
 
@@ -33,17 +31,19 @@ def _child_indent(children: list[Node], default: str) -> str:
     return default
 
 
-def _emit_children(children: list[Node], default_indent: str, out: list[str], nl: str) -> None:
+def _emit_children(
+    children: list[Node], default_indent: str, out: list[str], nl: str, step: str
+) -> None:
     indent = _child_indent(children, default_indent)
     for node in children:
-        _emit(node, indent, out, nl)
+        _emit(node, indent, out, nl, step)
 
 
 def _unchanged(node: Command | ConfigBlock | Edit) -> bool:
     return node._sig is not None and node.signature() == node._sig
 
 
-def _emit(node: Node, default_indent: str, out: list[str], nl: str) -> None:
+def _emit(node: Node, default_indent: str, out: list[str], nl: str, step: str) -> None:
     if isinstance(node, RawLine):
         out.append(node.text)
         return
@@ -69,5 +69,5 @@ def _emit(node: Node, default_indent: str, out: list[str], nl: str) -> None:
         out.append(node.raw_open)
     else:
         out.append(indent + opening + nl)
-    _emit_children(node.children, indent + INDENT_STEP, out, nl)
+    _emit_children(node.children, indent + step, out, nl, step)
     out.append(node.raw_close if node.raw_close is not None else indent + closing + nl)

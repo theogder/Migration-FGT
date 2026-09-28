@@ -9,7 +9,8 @@ import pytest
 from fortimig.cli import main
 from fortimig.model import Command, Edit, format_path, walk
 from fortimig.parser import parse
-from fortimig.sanitize import MASKED_LINE, physical_interfaces, reference_names, sanitize
+from fortimig.fortios import physical_interfaces
+from fortimig.sanitize import MASKED_LINE, reference_names, sanitize
 from fortimig.secrets import SECRET_MARKER
 from fortimig.serializer import serialize
 from tests.helpers import FIXTURES, fixture_bytes
@@ -99,7 +100,7 @@ def test_names_never_touch_physical_interfaces_builtins_keywords() -> None:
 
 
 def test_physical_interfaces_detection() -> None:
-    assert physical_interfaces(load_fixture("simple.conf")) == {"port1", "port2"}
+    assert physical_interfaces(load_fixture("simple.conf")) == ["port1", "port2"]
 
 
 def test_keep_names_from_reference() -> None:
