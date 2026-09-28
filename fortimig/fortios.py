@@ -45,11 +45,14 @@ def interface_entries(doc: Document) -> Iterator[tuple[tuple[str, ...], Edit]]:
 def is_physical_interface(entry: Edit) -> bool:
     """Entrée de ``config system interface`` considérée comme physique.
 
-    Confirmé sur l'extrait réel du 300E : les ports physiques (``ha``,
-    ``mgmt``, ``portN``) portent ``set type physical``.
-    Hypothèse U2 (non confirmée) : un VLAN peut ne pas avoir de ``set type``
-    (``vlan`` étant le type par défaut). Une entrée sans type et sans
-    ``vlanid`` est donc considérée comme physique, par prudence.
+    Formes confirmées sur l'extrait réel du 300E (DECISIONS.md U2) :
+    - ports physiques, y compris ``ha``, ``mgmt`` et ``npu0_vlink0/1`` :
+      ``set type physical`` ;
+    - agrégats : ``set type aggregate`` ;
+    - VLAN : **pas** de ``set type`` (``vlan`` est le type par défaut), mais
+      ``set vlanid``.
+    Une entrée sans type et sans ``vlanid`` est considérée comme physique, par
+    prudence : elle devra alors figurer dans le mapping.
     """
     kind = set_value(entry, "type")
     if kind is not None:

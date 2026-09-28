@@ -23,6 +23,8 @@ MAPPING = """
 "port2" = "x1"
 "port15" = "port1"
 "port30" = "drop"
+"npu0_vlink0" = "drop"
+"npu0_vlink1" = "drop"
 """
 
 G = "config global > config system interface"
@@ -78,7 +80,8 @@ def test_physical_keys_renamed_simultaneously() -> None:
     doc, _ = convert()
     # port1 -> port3 et port3 -> port5 : jamais port1 -> port5 ; port15 -> port1.
     assert edits(doc, G) == [
-        "ha", "mgmt", "port3", "x1", "port5", "port6", "port1", "agg-lan", "vlan-srv", "vlan-p1",
+        "ha", "mgmt", "port3", "x1", "port5", "port6", "port1",
+        "agg-lan", "vlan-srv", "vlan-p1", "vlan-lacp", "vlan-ivdom",
     ]
 
 
@@ -102,14 +105,15 @@ def test_references_updated() -> None:
 
 def test_logical_interfaces_keep_their_names() -> None:
     doc, _ = convert()
-    assert {"agg-lan", "vlan-srv", "vlan-p1"} <= set(edits(doc, G))
+    assert {"agg-lan", "vlan-srv", "vlan-p1", "vlan-lacp", "vlan-ivdom"} <= set(edits(doc, G))
 
 
 def test_dropped_interface_removed_and_references_flagged() -> None:
     doc, report = convert()
-    assert "port30" not in edits(doc, G)
+    assert not {"port30", "npu0_vlink0", "npu0_vlink1"} & set(edits(doc, G))
     assert findings(report, Category.SUPPRIME) == [
-        (f'{G} > edit "port30"', "interface physique « port30 » supprimée")
+        (f'{G} > edit "{n}"', f"interface physique « {n} » supprimée")
+        for n in ("port30", "npu0_vlink0", "npu0_vlink1")
     ]
     review = findings(report, Category.A_REVOIR)
     # Référence dans un attribut couvert : non modifiée, signalée.
@@ -118,6 +122,12 @@ def test_dropped_interface_removed_and_references_flagged() -> None:
         "référence vers « port30 » (interface abandonnée : drop)",
     ) in review
     assert values(doc)[f"{R} > config firewall policy > edit 20 > set srcintf"] == ["port30"]
+    # VLAN porté par un lien NPU abandonné : parent inchangé, signalé.
+    assert (
+        f'{G} > edit "vlan-ivdom" > set interface',
+        "référence vers « npu0_vlink0 » (interface abandonnée : drop)",
+    ) in review
+    assert values(doc)[f'{G} > edit "vlan-ivdom" > set interface'] == ["npu0_vlink0"]
 
 
 def test_uncovered_references_flagged_not_modified() -> None:
@@ -170,11 +180,14 @@ def test_flat_output_stays_flat_and_parsable() -> None:
     parse(text)
 
 
+PORTS = ["ha", "mgmt", "port1", "port2", "port3", "port4", "port15", "port30", "npu0_vlink0", "npu0_vlink1"]
+
+
 def test_identity_mapping_changes_nothing() -> None:
     identity = "[interfaces]\n" + "".join(
-        f'"{p}" = "{p}"\n' for p in ["ha", "mgmt", "port1", "port2", "port3", "port4", "port15", "port30"]
+        f'"{p}" = "{p}"\n' for p in PORTS
     )
-    targets = ["ha", "mgmt", "port1", "port2", "port3", "port4", "port15", "port30"]
+    targets = PORTS
     doc, report = convert(mapping(identity), targets=targets)
     assert serialize(doc) == fixture_bytes("flat.conf").decode()
     assert findings(report, Category.MODIFIE) == []
@@ -274,9 +287,21 @@ def test_mapping_entry_without_source_interface_is_flagged() -> None:
     assert findings(report, Category.ERREUR) == []
 
 
-def test_vlan_without_type_is_not_physical() -> None:
-    # vlan-p1 n'a pas de "set type" mais a un vlanid (hypothèse U2) : pas besoin de mapping.
-    assert "vlan-p1" not in physical_interfaces(parse(fixture_bytes("flat.conf").decode()))
+def test_physical_detection_matches_observed_forms() -> None:
+    # Confirmé sur le 300E : VLAN sans "set type" mais avec vlanid ; agrégat
+    # "set type aggregate" ; liens NPU "set type physical".
+    assert physical_interfaces(parse(fixture_bytes("flat.conf").decode())) == [
+        "ha", "mgmt", "port1", "port2", "port3", "port4", "port15", "port30", "npu0_vlink0", "npu0_vlink1",
+    ]
+
+
+def test_unmapped_npu_link_is_blocking() -> None:
+    # Aucun traitement spécial des liens NPU (SPEC §11 : pas de nom de port en dur).
+    _, report = convert(mapping(npu0_vlink1=None))
+    assert findings(report, Category.ERREUR) == [
+        (f'{G} > edit "npu0_vlink1"', "interface physique « npu0_vlink1 » absente du mapping "
+         '(la mapper vers un port du 120G ou la déclarer "drop")')
+    ]
 
 
 def test_uncovered_edit_key_is_flagged() -> None:
