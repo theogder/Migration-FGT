@@ -149,6 +149,11 @@ def test_port_specific_options_flagged() -> None:
     speed = [r for r in review if r[0].endswith("set speed")]
     assert speed == [(f'{G} > edit "port1" > set speed', "port1 -> port3 : vitesse / duplex "
                       "dépendant du type de port cible (RJ45, SFP, SFP+)")]
+    # Port mappé à l'identique : l'option est quand même signalée.
+    assert [r for r in review if r[0].endswith("set dedicated-to")] == [
+        (f'{G} > edit "mgmt" > set dedicated-to',
+         "mgmt -> mgmt : port dédié (ex. management) : support à vérifier sur le port cible")
+    ]
     snmp = [r for r in review if r[0].endswith("set snmp-index")]
     # Tous les ports mappés, y compris à l'identique (ha, mgmt) ; pas le port abandonné.
     assert len(snmp) == 7

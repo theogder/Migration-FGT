@@ -100,6 +100,10 @@ PORT_SPECIFIC_OPTIONS: dict[str, str] = {
     "speed": "vitesse / duplex dépendant du type de port cible (RJ45, SFP, SFP+)",
     "mediatype": "type de média dépendant du transceiver et du port cible",
     "forward-error-correction": "FEC dépendant du type de port cible",
+    # Validé par l'ingénieur de production : rôle dédié (observé sur le port
+    # "mgmt" du 300E : "set dedicated-to management"), support sur le port
+    # cible du 120G non garanti.
+    "dedicated-to": "port dédié (ex. management) : support à vérifier sur le port cible",
     # DECISIONS.md U6 : l'index SNMP du 300E peut entrer en conflit avec ceux du 120G.
     "snmp-index": "index SNMP propre au boîtier source, conflit possible sur la cible",
 }
