@@ -13,6 +13,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from fortimig import __version__
+from fortimig.diagnose import diagnose_bytes
 from fortimig.ipanon import DEFAULT_SEED
 from fortimig.model import Document
 from fortimig.parser import ENCODING, ERRORS, ParseError, load
@@ -120,6 +121,17 @@ def _cmd_sanitize(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_diagnose(args: argparse.Namespace) -> int:
+    path = Path(args.config)
+    if not path.is_file():
+        raise CliError(f"configuration introuvable : {path}")
+    if args.line < 1 or args.context < 0:
+        raise CliError("--line doit être ≥ 1 et --context ≥ 0")
+    for line in diagnose_bytes(path.read_bytes(), args.line, args.context):
+        print(line)
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="fortimig",
@@ -160,7 +172,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(handler=_cmd_sanitize)
 
-    p = sub.add_parser("errlog", help="analyser la sortie de 'diagnose debug config-error-log read'")
+    p = sub.add_parser(
+        "diagnose",
+        help="structure autour d'une ligne (sans aucune valeur), pour analyser une erreur de lecture",
+    )
+    p.add_argument("--config", required=True)
+    p.add_argument("--line", type=int, required=True, help="ligne signalée par l'erreur")
+    p.add_argument("--context", type=int, default=30, help="lignes affichées de part et d'autre")
+    p.set_defaults(handler=_cmd_diagnose)
+
+    p = sub.add_parser("errlog",help="analyser la sortie de 'diagnose debug config-error-log read'")
     p.add_argument("--log", required=True)
     p.add_argument("--config", required=True)
     p.set_defaults(handler=_not_implemented)

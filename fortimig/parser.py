@@ -72,7 +72,25 @@ def parse(text: str) -> Document:
     for ll in lines[:header_end]:
         doc.header.append(RawLine(ll.raw, ll.line))
 
+    # Dernière valeur multi-lignes lue : indice précieux en cas d'erreur de
+    # structure (une valeur mal délimitée décale toute la suite du fichier).
+    last_multiline: LogicalLine | None = None
+
+    def fail(line: int, message: str) -> ParseError:
+        return ParseError(line, f"{message} ({_context(stack, last_multiline)})")
+
     for ll in lines[header_end:]:
+        if ll.end_line > ll.line:
+            last_multiline = ll
+            # Hypothèse U1 : \" est un guillemet échappé. Une valeur dont une
+            # ligne se termine par \" a peut-être « débordé » (ex. chemin
+            # Windows terminé par un antislash) : la structure peut rester
+            # valide alors que la valeur est faussée. On le signale.
+            if any(t.quoted and ('\\"\n' in t.text or '\\"\r\n' in t.text) for t in ll.tokens):
+                doc.warnings.append(
+                    f"lignes {ll.line}-{ll.end_line} : valeur multi-lignes contenant \\\" en fin "
+                    "de ligne, délimitation incertaine (vérifier avec « diagnose »)"
+                )
 
         if ll.is_comment or ll.is_blank:
             children().append(RawLine(ll.raw, ll.line))
@@ -83,7 +101,7 @@ def parse(text: str) -> Document:
 
         if keyword == "config":
             if len(ll.tokens) < 2:
-                raise ParseError(ll.line, "« config » sans nom de bloc")
+                raise fail(ll.line, "« config » sans nom de bloc")
             block = ConfigBlock(
                 words=tuple(t.value for t in ll.tokens[1:]),
                 raw_open=ll.raw,
@@ -95,22 +113,33 @@ def parse(text: str) -> Document:
             stack.append(block)
         elif keyword == "edit":
             if not stack or not isinstance(stack[-1], ConfigBlock):
-                raise ParseError(ll.line, "« edit » hors d'un bloc « config »")
+                raise fail(ll.line, "« edit » hors d'un bloc « config »")
             if len(ll.tokens) != 2:
-                raise ParseError(ll.line, "« edit » attend exactement une clé")
+                raise fail(ll.line, "« edit » attend exactement une clé")
             entry = Edit(key=ll.tokens[1], raw_open=ll.raw, indent=ll.indent, line=ll.line)
             entry._sig = entry.signature()
             children().append(entry)
             stack.append(entry)
-        elif keyword == "next":
-            _close(stack, Edit, ll, "« next » sans « edit » ouvert")
-        elif keyword == "end":
-            _close(stack, ConfigBlock, ll, "« end » sans « config » ouvert")
+        elif keyword in ("next", "end"):
+            kind: type = Edit if keyword == "next" else ConfigBlock
+            if not stack:
+                opener = "edit" if keyword == "next" else "config"
+                raise fail(ll.line, f"« {keyword} » sans « {opener} » ouvert")
+            if not isinstance(stack[-1], kind):
+                other, closer = ("config", "end") if keyword == "next" else ("edit", "next")
+                raise fail(
+                    ll.line,
+                    f"« {keyword} » alors que le « {other} » de la ligne {stack[-1].line} "
+                    f"n'est pas fermé par « {closer} »",
+                )
+            node = stack.pop()
+            node.raw_close = ll.raw
+            node.end_line = ll.line
         elif keyword in COMMAND_VERBS:
             if not stack:
-                raise ParseError(ll.line, f"« {keyword} » hors de tout bloc")
+                raise fail(ll.line, f"« {keyword} » hors de tout bloc")
             if len(ll.tokens) < 2:
-                raise ParseError(ll.line, f"« {keyword} » sans nom d'option")
+                raise fail(ll.line, f"« {keyword} » sans nom d'option")
             cmd = Command(
                 verb=keyword,
                 option=ll.tokens[1].value,
@@ -127,16 +156,29 @@ def parse(text: str) -> Document:
             doc.warnings.append(f"ligne {ll.line} : ligne non reconnue, conservée telle quelle")
 
     if stack:
-        raise ParseError(stack[-1].line, "bloc ouvert ici et jamais fermé")
+        raise fail(stack[-1].line, "bloc ouvert ici et jamais fermé")
     return doc
 
 
-def _close(stack: list[Container], kind: type, ll: LogicalLine, message: str) -> None:
-    if not stack or not isinstance(stack[-1], kind):
-        raise ParseError(ll.line, message)
-    node = stack.pop()
-    node.raw_close = ll.raw
-    node.end_line = ll.line
+def describe_stack(stack: list[Container]) -> str:
+    """Blocs ouverts, sans valeur : noms de blocs "config" et lignes des "edit"."""
+    if not stack:
+        return "aucun bloc ouvert"
+    parts = [
+        f"config {n.name} (l. {n.line})" if isinstance(n, ConfigBlock) else f"edit (l. {n.line})"
+        for n in stack
+    ]
+    return "blocs ouverts : " + " > ".join(parts)
+
+
+def _context(stack: list[Container], last_multiline: LogicalLine | None) -> str:
+    text = describe_stack(stack)
+    if last_multiline is not None:
+        text += (
+            f" ; dernière valeur multi-lignes : lignes {last_multiline.line}"
+            f"-{last_multiline.end_line}"
+        )
+    return text
 
 
 def parse_bytes(data: bytes) -> Document:
