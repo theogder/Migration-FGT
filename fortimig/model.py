@@ -64,6 +64,8 @@ class Command:
 
 @dataclass(slots=True)
 class Edit:
+    # raw_close == "" : entrée fermée implicitement par le « end » de son bloc
+    # (forme des sections « config vdom » des backups multi-VDOM).
     key: Token
     children: list[Node] = field(default_factory=list)
     raw_open: str | None = None

@@ -6,7 +6,10 @@ import pytest
 
 from fortimig.cli import main
 from fortimig.diagnose import diagnose
+from fortimig.lexer import Token
+from fortimig.model import format_path, walk
 from fortimig.parser import ParseError, parse
+from fortimig.serializer import serialize
 
 CANARY = "CANARY-SECRET"
 
@@ -26,13 +29,57 @@ end
 """
 
 
-def test_end_with_open_edit_names_the_edit() -> None:
-    with pytest.raises(ParseError) as exc:
-        parse("config a\nedit 1\nset x 1\nend\n")
-    message = str(exc.value)
-    assert exc.value.line == 4
-    assert "« end » alors que le « edit » de la ligne 2 n'est pas fermé par « next »" in message
-    assert "blocs ouverts : config a (l. 1) > edit (l. 2)" in message
+VDOM_SECTION = """config vdom
+edit root
+config firewall address
+edit "a"
+set subnet 192.0.2.0 255.255.255.0
+next
+end
+end
+config vdom
+edit dmz
+config firewall address
+edit "b"
+next
+end
+end
+"""
+
+
+def test_vdom_section_closed_by_single_end() -> None:
+    # Forme observée sur le backup réel du 300E : pas de « next » avant le
+    # « end » qui clôt la section du VDOM.
+    doc = parse(VDOM_SECTION)
+    assert doc.warnings == []
+    assert serialize(doc) == VDOM_SECTION  # aucun « next » ajouté
+    paths = [format_path(p) for p, _ in walk(doc.children)]
+    assert 'config vdom > edit root > config firewall address > edit "a" > set subnet' in paths
+    assert 'config vdom > edit dmz > config firewall address > edit "b"' in paths
+
+
+def test_renamed_vdom_entry_still_gets_no_next() -> None:
+    doc = parse(VDOM_SECTION)
+    entry = doc.children[0].children[0]
+    entry.key = Token.make("vd1", quoted=False)
+    assert serialize(doc).startswith("config vdom\nedit vd1\nconfig firewall address\n")
+    assert "next\nend\nend\n" in serialize(doc)
+
+
+def test_end_closing_edit_outside_vdom_is_accepted_with_warning() -> None:
+    text = "config a\nedit 1\nset x 1\nend\n"
+    doc = parse(text)
+    assert serialize(doc) == text
+    assert doc.warnings == [
+        "ligne 4 : « end » ferme aussi l'« edit » de la ligne 2 sans « next » "
+        "(forme observée seulement sous « config vdom »)"
+    ]
+
+
+def test_diagnose_accepts_vdom_form() -> None:
+    lines = diagnose(VDOM_SECTION, line=8, context=10)
+    assert not any("ANOMALIE" in l for l in lines)
+    assert lines[-1] == "Blocs ouverts en fin de fenêtre : aucun bloc ouvert"
 
 
 def test_next_with_open_config() -> None:

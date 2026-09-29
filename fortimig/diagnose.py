@@ -61,6 +61,9 @@ def _apply(stack: list[_Frame], ll: LogicalLine) -> str | None:
         expected = "edit" if keyword == "next" else "config"
         if not stack:
             return f"« {keyword} » sans bloc ouvert"
+        if keyword == "end" and stack[-1].kind == "edit" and len(stack) > 1:
+            # « end » qui ferme aussi l'edit (sections « config vdom »), cf. parser.
+            stack.pop()
         if stack[-1].kind != expected:
             top = stack[-1]
             return f"« {keyword} » alors que le bloc ouvert est « {top.label} » (l. {top.line})"

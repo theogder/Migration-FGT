@@ -174,7 +174,7 @@ def test_multiline_value_is_not_parsed_as_structure() -> None:
 def test_multivdom_structure() -> None:
     doc = parse(fixture_bytes("multivdom.conf").decode())
     top = [c.name for c in doc.children if isinstance(c, ConfigBlock)]
-    assert top == ["vdom", "global", "vdom"]
+    assert top == ["vdom", "global", "vdom", "vdom"]
     paths = {format_path(p) for p, _ in walk(doc.children)}
     assert "config global > config system ha > set hbdev" in paths
     assert (
@@ -200,7 +200,6 @@ def test_line_numbers() -> None:
         ("config system global\n    set x 1\n", 1),  # bloc jamais fermé
         ("next\n", 1),
         ("config a\nend\nend\n", 3),
-        ("config a\n    edit 1\nend\n", 3),  # "end" alors qu'un edit est ouvert
         ("edit 1\nnext\n", 1),
         ("set x 1\n", 1),
         ('config a\n    set x "jamais ferme\n    set y 2\nend\n', 2),

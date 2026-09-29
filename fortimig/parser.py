@@ -125,6 +125,22 @@ def parse(text: str) -> Document:
             if not stack:
                 opener = "edit" if keyword == "next" else "config"
                 raise fail(ll.line, f"« {keyword} » sans « {opener} » ouvert")
+            if keyword == "end" and isinstance(stack[-1], Edit):
+                # Forme observée sur le backup réel du 300E (DECISIONS.md U11) :
+                # une section « config vdom / edit <vdom> » se termine par un
+                # seul « end », sans « next ». Ce « end » ferme l'edit ET le
+                # config. L'edit reçoit une fermeture vide ("") pour que le
+                # sérialiseur n'ajoute pas de « next » (round-trip exact).
+                entry = stack.pop()
+                entry.raw_close = ""
+                entry.end_line = ll.line
+                parent = stack[-1]  # un edit est toujours dans un config
+                if not (isinstance(parent, ConfigBlock) and parent.words == ("vdom",)):
+                    doc.warnings.append(
+                        f"ligne {ll.line} : « end » ferme aussi l'« edit » de la ligne "
+                        f"{entry.line} sans « next » (forme observée seulement sous "
+                        "« config vdom »)"
+                    )
             if not isinstance(stack[-1], kind):
                 other, closer = ("config", "end") if keyword == "next" else ("edit", "next")
                 raise fail(
