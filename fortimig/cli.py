@@ -15,6 +15,7 @@ from pathlib import Path
 from fortimig import __version__
 from fortimig.convert import convert
 from fortimig.diagnose import diagnose_bytes
+from fortimig.errlog import analyze, render
 from fortimig.ipanon import DEFAULT_SEED
 from fortimig.mapping import MappingError, load_mapping
 from fortimig.model import Document
@@ -207,6 +208,18 @@ def _cmd_mapping_template(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_errlog(args: argparse.Namespace) -> int:
+    log = Path(args.log)
+    if not log.is_file():
+        raise CliError(f"journal introuvable : {log}")
+    doc = _load(args.config, "configuration")
+    # Le journal recopie des lignes de configuration : même garde anti-fuite.
+    console = _Console(LeakGuard.from_documents(doc))
+    text = log.read_bytes().decode(ENCODING, "replace")
+    console.out(render(analyze(doc, text)).rstrip("\n"))
+    return EXIT_OK
+
+
 def _cmd_diagnose(args: argparse.Namespace) -> int:
     path = Path(args.config)
     if not path.is_file():
@@ -276,9 +289,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(handler=_cmd_diagnose)
 
     p = sub.add_parser("errlog",help="analyser la sortie de 'diagnose debug config-error-log read'")
-    p.add_argument("--log", required=True)
-    p.add_argument("--config", required=True)
-    p.set_defaults(handler=_not_implemented)
+    p.add_argument("--log", required=True, help="sortie collée dans un fichier texte")
+    p.add_argument("--config", required=True, help="configuration restaurée (converted.conf)")
+    p.set_defaults(handler=_cmd_errlog)
 
     return parser
 

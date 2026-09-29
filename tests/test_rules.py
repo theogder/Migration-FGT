@@ -134,10 +134,14 @@ def test_invalid_rules(text: str, message: str) -> None:
     assert message in str(exc.value)
 
 
-def test_repository_rules_file_is_valid_and_only_flags() -> None:
-    loaded = load_rules(ROOT / "rules.toml")
-    assert loaded and all(r.action == "flag" for r in loaded)
+def test_repository_rules_file() -> None:
+    loaded = {r.chain: r for r in load_rules(ROOT / "rules.toml")}
+    # npu : existe sur le 120G, seulement signalé.
+    assert loaded[(("system", "npu"),)].action == "flag"
+    # np6 : refusé par le 120G de lab (config-error-log), supprimé.
+    np6 = loaded[(("system", "np6"),)]
+    assert np6.action == "remove" and "config-error-log" in np6.reason
     doc = parse(fixture_bytes("target-default.conf").decode())
     report = Report()
-    apply_rules(doc, loaded, report)
+    apply_rules(doc, list(loaded.values()), report)
     assert [f.path for f in report.findings] == ["config global > config system npu"]

@@ -15,3 +15,8 @@
 path = "config system npu"
 action = "flag"
 reason = "Bloc NPU : présent aussi sur le 120G (config np-queues dans sa configuration par défaut), mais les options NP6 du 300E n'y existent probablement pas toutes. Ne pas supprimer en bloc : valider option par option via le config-error-log."
+
+[[rule]]
+path = "config system np6"
+action = "remove"
+reason = "Bloc NP6 propre au 300E : refusé par le 120G de lab (config-error-log : « \"config\" \"system\" \"np6\" @ …:global:command parse error (error -61) »)."

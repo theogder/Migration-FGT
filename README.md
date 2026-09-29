@@ -20,8 +20,8 @@ ou après `pip install -e .` : `fortimig <commande> ...`
 
 | Commande | État |
 |---|---|
-| `convert`, `mapping-template`, `sanitize`, `diagnose` | disponibles |
-| `check`, `diff`, `errlog` | à venir |
+| `convert`, `mapping-template`, `errlog`, `sanitize`, `diagnose` | disponibles |
+| `check`, `diff` | à venir |
 
 ### Convertir
 
@@ -48,6 +48,19 @@ ou après `pip install -e .` : `fortimig <commande> ...`
 
    `target-default.conf` : backup du 120G **en usine, dans la version de la
    source, en multi-VDOM** si la source l'est.
+
+### Analyser le journal d'erreurs du 120G de lab
+
+Après restauration de `converted.conf`, coller la sortie de
+`diagnose debug config-error-log read` dans un fichier texte, puis :
+
+```
+python -m fortimig errlog --log errlog.txt --config sortie/converted.conf
+```
+
+Chaque erreur est retrouvée dans `converted.conf` (ligne, chemin), regroupée
+par bloc, avec une règle `rules.toml` proposée — jamais appliquée
+automatiquement.
 
 ### Anonymiser un extrait avant de le partager
 
