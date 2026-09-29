@@ -201,3 +201,12 @@ def test_fixtures_directory_contains_no_real_config() -> None:
     assert sorted(p.name for p in FIXTURES.glob("*.conf")) == [
         "flat.conf", "multiline.conf", "multivdom.conf", "secrets.conf", "simple.conf", "target-default.conf",
     ]
+
+
+def test_port_option_identical_to_target_default_not_flagged(tmp_path: Path) -> None:
+    # mgmt : "set dedicated-to management" dans la source ET dans le défaut de la cible.
+    main(setup(tmp_path))
+    data = json.loads((tmp_path / "out" / "report.json").read_text("utf-8"))
+    assert not [e for e in data["entrees"] if e["chemin"].endswith("set dedicated-to")]
+    # port1 -> port3 : "set speed 1000full" absent du défaut de port3 : toujours signalé.
+    assert [e for e in data["entrees"] if e["chemin"].endswith('edit "port1" > set speed')]

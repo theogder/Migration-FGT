@@ -174,22 +174,39 @@ def validate_mapping(
 
 
 def rename_interfaces(
-    doc: Document, mapping: Mapping, target_physical: list[str], report: Report
+    doc: Document,
+    mapping: Mapping,
+    target_physical: list[str],
+    report: Report,
+    target_defaults: dict[str, Edit] | None = None,
 ) -> None:
-    """Valide le mapping puis renomme en place. Les constats vont dans ``report``."""
+    """Valide le mapping puis renomme en place. Les constats vont dans ``report``.
+
+    ``target_defaults`` : blocs par défaut des ports de la cible (par nom). Une
+    option propre au port déjà présente, avec la même valeur, dans le bloc par
+    défaut du port cible n'est pas signalée (ex. ``dedicated-to management``
+    sur le ``mgmt`` des deux modèles).
+    """
     validate_mapping(doc, mapping, target_physical, report)
     physical = {e.name for _, e in interface_entries(doc) if is_physical_interface(e)}
     mapped = {s: t for s, t in mapping.interfaces.items() if s in physical}
     dropped = frozenset(n for n in mapping.dropped if n in physical)
-    _Renamer(mapped, dropped, report).visit(doc.children, (), ())
+    _Renamer(mapped, dropped, report, target_defaults or {}).visit(doc.children, (), ())
 
 
 class _Renamer:
-    def __init__(self, mapped: dict[str, str], dropped: frozenset[str], report: Report) -> None:
+    def __init__(
+        self,
+        mapped: dict[str, str],
+        dropped: frozenset[str],
+        report: Report,
+        target_defaults: dict[str, Edit],
+    ) -> None:
         self.mapped = mapped  # ports physiques mappés, y compris à l'identique
         self.renamed = {s: t for s, t in mapped.items() if s != t}
         self.dropped = dropped
         self.report = report
+        self.target_defaults = target_defaults
 
     def _describe(self, value: str) -> str:
         if value in self.dropped:
@@ -250,8 +267,16 @@ class _Renamer:
         return True
 
     def _port_options(self, entry: Edit, path: tuple[str, ...], old: str, new: str) -> None:
+        default = self.target_defaults.get(new)
+        same_as_default = (
+            {(c.option, tuple(c.values)) for c in default.children if isinstance(c, Command)}
+            if default is not None
+            else set()
+        )
         for child in entry.children:
             if isinstance(child, Command) and child.option in PORT_SPECIFIC_OPTIONS:
+                if (child.option, tuple(child.values)) in same_as_default:
+                    continue  # valeur identique au défaut du port cible : rien à revoir
                 self.report.add(
                     Category.A_REVOIR,
                     format_path(path + (segment(child),)),

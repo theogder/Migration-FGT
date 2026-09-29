@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from fortimig.fortios import physical_interfaces
+from fortimig.fortios import interface_entries, physical_interfaces
 from fortimig.ha import apply_ha
 from fortimig.header import replace_header
 from fortimig.interfaces import rename_interfaces
@@ -51,7 +51,8 @@ def convert(source: Document, target: Document, mapping: Mapping, rules: list[Ru
 
     replace_header(source, target, mapping, report)
     apply_rules(source, rules, report)
-    rename_interfaces(source, mapping, physical_interfaces(target), report)
+    target_defaults = {e.name: e for _, e in interface_entries(target)}
+    rename_interfaces(source, mapping, physical_interfaces(target), report, target_defaults)
     apply_target_defaults(source, target, mapping, report)
     secondary = apply_ha(source, mapping, report)
     return ConvertResult(report, source, secondary)
