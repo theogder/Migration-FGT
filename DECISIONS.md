@@ -17,6 +17,7 @@ l'ingénieur de production, et incertitudes FortiOS en suspens.
 | D8 | `check` | Références introuvables en `A_REVOIR`. Les objets intégrés absents des backups sont déclarés dans une liste modifiable. |
 | D9 | `sanitize --ips` | Anonymisation préservant les préfixes, graine optionnelle. Masques et adresses spéciales inchangés. La distinction privé / public est **conservée** (une adresse privée reste dans sa plage privée). IPv6 non traité (non utilisé). |
 | D11 | Flux git | À partir de l'étape 3 : travail directement sur `main`, plus de branches de travail. |
+| D12 | `management-ip` d'interface | Identique sur les deux membres du cluster actuel (vérifié) : aucun traitement particulier pour le second 120G. |
 | D10 | Sortie de `convert` | `DIR/converted.conf`, `DIR/secondary-ha.txt`, `DIR/report.md`, `DIR/report.json`. |
 
 ## Choix d'implémentation (à valider au fil de l'eau)
@@ -36,6 +37,9 @@ l'ingénieur de production, et incertitudes FortiOS en suspens.
 | I11 | Emplacements de noms d'interface | Table `INTERFACE_REFS` de `fortimig/interfaces.py` : (option, bloc englobant éventuel), chaque entrée justifiée. `member` restreint à `system interface` / `system switch-interface` ; `hbdev` traité par paires nom / priorité. Clés d'`edit` : `system interface`, `system dns-server`. Tout autre jeton égal à un ancien nom est signalé « référence non couverte ». |
 | I12 | Options propres au port | `speed`, `mediatype`, `forward-error-correction`, `snmp-index` et `dedicated-to` (validé) signalées en `A_REVOIR` sur **tous** les ports mappés, y compris à l'identique (un `port1` peut être SFP sur la source et RJ45 sur la cible). |
 | I13 | Cohérence du mapping | `ERREUR` : port physique non mappé, cible absente de `target-default.conf`, cible attribuée deux fois, interface logique dans le mapping, cible portant le nom d'une interface logique. `A_REVOIR` : entrée du mapping sans interface dans la source. |
+| I14 | `secondary-ha.txt` : mode VDOM | Produit dans le mode VDOM de la configuration convertie : bloc HA sous `config global` → fichier encadré par `config global` / `end`, et `A_REVOIR` rappelant de passer le second 120G en multi-VDOM avant collage. |
+| I15 | HA : valeurs manquantes | `hostname` / `ha_priority_primary` absents : valeurs de la source conservées, `A_REVOIR`. `hostname_secondary` / `ha_priority_secondary` absents : `ERREUR` (fichier secondaire impossible). Option absente de la source : ajoutée avant le premier sous-bloc. |
+| I16 | HA : contrôles | Tout secret du bloc HA copié (pas seulement `password`) remplacé par `<A_RENSEIGNER>`. `override enable` avec priorité secondaire > primaire : `A_REVOIR`. Priorités dans des sous-blocs HA (virtual clustering) : non modifiées, `A_REVOIR`. |
 
 ## Incertitudes FortiOS en suspens
 
