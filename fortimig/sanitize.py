@@ -80,6 +80,7 @@ def sanitize(
         protected = BUILTIN_NAMES | keep_names | frozenset(physical_interfaces(doc))
         result.name_table = _collect_names(doc, protected)
         _replace_names(doc.children, result.name_table, in_vdom_table=False)
+        _replace_header_user(doc, result.name_table, protected)
         identifying = _count_identifying(doc.children)
         for option, count in sorted(identifying.items()):
             result.warnings.append(
@@ -90,6 +91,30 @@ def sanitize(
         _replace_ips(doc.children, anonymizer)
         result.ip_table = dict(sorted(anonymizer.table.items(), key=lambda kv: _ip_key(kv[0])))
     return result
+
+
+# Champ "user=" de l'en-tête : compte ayant produit le backup (observé :
+# "#config-version=FG3H0E-7.4.9-FW-build2829-250924:opmode=0:vdom=1:user=adm-xxx").
+_HEADER_USER_RE = re.compile(r"(:user=)([^:\r\n]+)")
+HEADER_USER_KIND = "system-admin"
+
+
+def _replace_header_user(doc: Document, table: dict[str, str], protected: frozenset[str]) -> None:
+    """Remplace le compte de l'en-tête, de façon cohérente avec ``config system admin``."""
+    for raw in doc.header:
+        if not raw.text.startswith("#config-version="):
+            continue
+        match = _HEADER_USER_RE.search(raw.text)
+        if match is None or match.group(2) in protected:
+            continue
+        user = match.group(2)
+        if user not in table:
+            used = set(table.values())
+            n = 1
+            while f"{HEADER_USER_KIND}-{n:04d}" in used:
+                n += 1
+            table[user] = f"{HEADER_USER_KIND}-{n:04d}"
+        raw.text = raw.text[: match.start(2)] + table[user] + raw.text[match.end(2) :]
 
 
 def _ip_key(entry: str) -> tuple[int, ...]:

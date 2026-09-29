@@ -131,6 +131,30 @@ def test_group_name_and_secrets_in_ha() -> None:
     assert values["config global > config system ha > set hbdev"] == ["ha1", "50", "ha2", "50"]
 
 
+def test_header_user_is_anonymized_consistently() -> None:
+    result = sanitize(load_fixture("secrets.conf"), names=True)
+    header = result.document.header[0].text
+    # "admin" est aussi un compte de config system admin : même identifiant.
+    assert header.endswith(f":user={result.name_table['admin']}\n")
+    assert values_at(serialize(result.document)).get(
+        f'config global > config system admin > edit "{result.name_table["admin"]}" > set password'
+    )
+
+
+def test_header_user_not_in_config_gets_its_own_id() -> None:
+    doc = parse("#config-version=FGX-7.4.9-FW-build1-000000:opmode=0:vdom=1:user=compte-reel\nconfig a\nend\n")
+    result = sanitize(doc, names=True)
+    assert result.document.header[0].text.endswith(":user=system-admin-0001\n")
+    assert result.name_table["compte-reel"] == "system-admin-0001"
+
+
+def test_header_user_kept_without_names_or_when_protected() -> None:
+    text = "#config-version=FGX-7.4.9-FW-build1-000000:opmode=0:vdom=1:user=admin\nconfig a\nend\n"
+    assert sanitize(parse(text)).document.header[0].text.endswith(":user=admin\n")
+    kept = sanitize(parse(text), names=True, keep_names=frozenset({"admin"}))
+    assert kept.document.header[0].text.endswith(":user=admin\n")
+
+
 def test_identifying_options_are_reported_not_changed() -> None:
     result = sanitize(load_fixture("secrets.conf"), names=True)
     assert any("« dn »" in w for w in result.warnings)
