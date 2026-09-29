@@ -40,8 +40,8 @@ def test_unedited_template_blocks_conversion() -> None:
 
 def test_template_comments() -> None:
     text = build()
-    assert '"port1"       = "A_DEFINIR"  # 5 référence(s), port de même nom disponible sur la cible' in text
-    assert '"port15"      = "A_DEFINIR"  # 1 référence(s)\n' in text
+    assert '"port1"       = "A_DEFINIR"  # porte 1 VLAN, 5 référence(s), port de même nom disponible sur la cible' in text
+    assert '"port15"      = "A_DEFINIR"  # lien HA (hbdev), 1 référence(s)\n' in text
     assert "# mgmt, ha, port1, port2, port3, port4, port5, port6, x1, x2, modem, npu0_vlink0, npu0_vlink1" in text
 
 
@@ -54,3 +54,12 @@ def test_cli_never_overwrites(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     assert main(args) == 2
     assert out.read_text("utf-8") == "contenu utilisateur"
     assert "aucun écrasement" in capsys.readouterr().err
+
+
+def test_template_shows_roles_of_ports_without_ip() -> None:
+    text = build()
+    # Ports sans IP mais indispensables : le rôle est affiché pour éviter un « drop » par erreur.
+    assert "\"port3\"       = \"A_DEFINIR\"  # membre de l'agrégat « agg-lan »" in text
+    assert "membre de la zone « zone-dmz », surveillé par le HA (monitor)" in text
+    assert '"npu0_vlink0" = "A_DEFINIR"  # porte 1 VLAN' in text
+    assert '"npu0_vlink1" = "A_DEFINIR"  # 0 référence(s)' in text
