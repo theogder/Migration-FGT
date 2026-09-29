@@ -1,0 +1,17 @@
+# Règles de conversion 300E -> 120G (SPEC §5.4).
+#
+# Ce fichier ne contient que des règles dont on est certain. Les autres sont
+# ajoutées au fil des itérations, à partir du config-error-log du 120G de lab
+# (commande « fortimig errlog »).
+#
+# Format :
+#   path   = "config a b"  ou  "config a b > config c"  (niveaux edit ignorés,
+#            s'applique dans tous les VDOM)
+#   option = "nom-option"  (facultatif : vise l'option plutôt que le bloc)
+#   action = "remove" (SUPPRIME) | "flag" (A_REVOIR, aucune modification)
+#   reason = "pourquoi"
+
+[[rule]]
+path = "config system npu"
+action = "flag"
+reason = "Bloc NPU : présent aussi sur le 120G (config np-queues dans sa configuration par défaut), mais les options NP6 du 300E n'y existent probablement pas toutes. Ne pas supprimer en bloc : valider option par option via le config-error-log."

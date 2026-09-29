@@ -14,9 +14,11 @@ Aucune configuration réelle, même anonymisée, ne doit être ajoutée au dép�
 - `flat.conf` reproduit le **format** observé sur un extrait anonymisé du
   300E (aucune indentation, en-têtes `#version=` / `#platform=`, ports `ha` et
   `mgmt`, `hbdev` nom / priorité) avec des valeurs entièrement inventées.
-- `target-default.conf` imite une configuration par défaut du modèle cible ;
-  ses noms de ports (`port1`…`port6`, `x1`, `x2`) sont **fictifs** et ne
-  prétendent pas refléter le 120G réel.
+- `target-default.conf` reproduit la **structure** observée sur la
+  configuration par défaut d'un 120G (ports `x` SFP+ avec `mediatype` /
+  `speed`, port `modem`, hard-switch `lan` et son `virtual-switch`,
+  agrégat `fortilink`, serveur DHCP par défaut, `config system npu`), en
+  multi-VDOM et avec une liste de ports réduite.
 
 Les fichiers `.conf` ne contiennent pas de commentaire explicatif : le
 round-trip exige qu'ils soient reproduits octet pour octet.
