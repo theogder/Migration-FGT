@@ -154,10 +154,9 @@ def test_port_specific_options_flagged() -> None:
         (f'{G} > edit "mgmt" > set dedicated-to',
          "mgmt -> mgmt : port dédié (ex. management) : support à vérifier sur le port cible")
     ]
-    snmp = [r for r in review if r[0].endswith("set snmp-index")]
-    # Tous les ports mappés, y compris à l'identique (ha, mgmt) ; pas le port abandonné.
-    assert len(snmp) == 7
-    assert not any("port30" in r[0] for r in snmp)
+    # snmp-index n'est plus signalé port par port : seuls les doublons le sont
+    # (cf. test_target.test_duplicate_snmp_index_flagged).
+    assert not [r for r in review if r[0].endswith("set snmp-index")]
 
 
 def test_modifications_are_reported_with_before_after() -> None:

@@ -47,6 +47,7 @@ def apply_target_defaults(doc: Document, target: Document, mapping: Mapping, rep
     _insert_unused_ports(doc, target, mapping, target_entries, converted, report)
     _flag_disappearing_interfaces(target, doc, report)
     _flag_disappearing_objects(target, doc, report)
+    _flag_duplicate_snmp_index(doc, report)
 
 
 # --- 1. Ports mappés ------------------------------------------------------------
@@ -230,3 +231,30 @@ def _summary(entry: Edit) -> str:
         render_command(c) for c in entry.children
         if isinstance(c, Command) and c.option in ("type", "ip", "interface", "member", "physical-switch")
     )
+
+
+# --- 4. Index SNMP en double ------------------------------------------------------------
+
+
+def _flag_duplicate_snmp_index(doc: Document, report: Report) -> None:
+    """Index SNMP portés par plusieurs interfaces de la configuration convertie.
+
+    DECISIONS.md U6 : les ports repris du 300E gardent leur index, les ports
+    du 120G repris par défaut gardent le leur ; un doublon est signalé, rien
+    n'est renuméroté.
+    """
+    seen: dict[str, list[tuple[str, str]]] = {}
+    for path, entry in interface_entries(doc):
+        for child in entry.children:
+            if isinstance(child, Command) and child.option == "snmp-index" and child.values:
+                seen.setdefault(child.values[0], []).append((format_path(path), entry.name))
+    for index, users in seen.items():
+        if len(users) < 2:
+            continue
+        names = ", ".join(f"« {name} »" for _, name in users)
+        for where, _ in users:
+            report.add(
+                Category.A_REVOIR,
+                f"{where} > set snmp-index",
+                f"index SNMP {index} porté par plusieurs interfaces ({names}) : à renuméroter",
+            )

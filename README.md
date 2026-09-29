@@ -20,8 +20,34 @@ ou après `pip install -e .` : `fortimig <commande> ...`
 
 | Commande | État |
 |---|---|
-| `sanitize`, `diagnose` | disponibles |
-| `convert`, `check`, `diff`, `errlog` | à venir |
+| `convert`, `mapping-template`, `sanitize`, `diagnose` | disponibles |
+| `check`, `diff`, `errlog` | à venir |
+
+### Convertir
+
+1. Générer un squelette de mapping (aucune correspondance n'est proposée) :
+
+   ```
+   python -m fortimig mapping-template --source 300E.conf --target-default 120G-default.conf --out mapping.toml
+   ```
+
+   Remplacer chaque `A_DEFINIR` par un port du 120G ou par `"drop"`, et
+   compléter `[device]`.
+
+2. Convertir :
+
+   ```
+   python -m fortimig convert --source 300E.conf --target-default 120G-default.conf \
+       --mapping mapping.toml --rules rules.toml --out sortie/
+   ```
+
+   `sortie/` contient `converted.conf`, `secondary-ha.txt`, `report.md` et
+   `report.json`. Codes de sortie : `0` sans point à revoir, `1` avec des
+   `A_REVOIR`, `2` erreur bloquante (aucune configuration écrite, et une
+   configuration d'une exécution précédente est supprimée).
+
+   `target-default.conf` : backup du 120G **en usine, dans la version de la
+   source, en multi-VDOM** si la source l'est.
 
 ### Anonymiser un extrait avant de le partager
 

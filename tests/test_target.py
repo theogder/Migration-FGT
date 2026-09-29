@@ -141,3 +141,14 @@ def test_no_secret_in_target_findings() -> None:
     assert "FAKE-ENC" not in repr(report)
     assert all(isinstance(e, Edit) for _, e in interface_entries(convert()[0]))
     assert format_path(("a", "b")) == "a > b"
+
+
+def test_duplicate_snmp_index_flagged() -> None:
+    # Source : port2 (index 4) -> x1 ; cible : port2 non utilisé, repris avec son index 4.
+    _, report = convert()
+    dup = [(f.path, f.message) for f in report.findings if "index SNMP" in f.message]
+    assert (
+        f'{G} > edit "x1" > set snmp-index',
+        "index SNMP 4 porté par plusieurs interfaces (« x1 », « port2 ») : à renuméroter",
+    ) in dup
+    assert all(f.category is Category.A_REVOIR for f in report.findings if "index SNMP" in f.message)

@@ -104,8 +104,6 @@ PORT_SPECIFIC_OPTIONS: dict[str, str] = {
     # "mgmt" du 300E : "set dedicated-to management"), support sur le port
     # cible du 120G non garanti.
     "dedicated-to": "port dédié (ex. management) : support à vérifier sur le port cible",
-    # DECISIONS.md U6 : l'index SNMP du 300E peut entrer en conflit avec ceux du 120G.
-    "snmp-index": "index SNMP propre au boîtier source, conflit possible sur la cible",
 }
 
 _VERBS_WITH_VALUES = frozenset({"set", "append", "select", "unselect"})
