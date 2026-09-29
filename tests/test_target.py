@@ -55,11 +55,11 @@ def test_unused_target_ports_inserted_after_last_physical() -> None:
     doc, report = convert()
     assert names(doc) == [
         "ha", "mgmt", "port3", "x1", "port5", "port6", "port1",
-        "port2", "port4", "x2", "modem",  # ports du 120G non utilisés, ordre de la cible
+        "port2", "port4", "x2", "modem", "npu0_vlink0", "npu0_vlink1",  # non utilisés, ordre de la cible
         "agg-lan", "vlan-srv", "vlan-p1", "vlan-lacp", "vlan-ivdom",
     ]
     added = [f.after for f in report.findings if f.category is Category.MODIFIE and "non utilisé" in f.message]
-    assert added == ["port2", "port4", "x2", "modem"]
+    assert added == ["port2", "port4", "x2", "modem", "npu0_vlink0", "npu0_vlink1"]
     assert not any(f.category is Category.ERREUR for f in report.findings)
 
 
