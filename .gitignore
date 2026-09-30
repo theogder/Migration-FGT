@@ -6,7 +6,17 @@ build/
 dist/
 .venv/
 
-# Ne jamais committer de configuration réelle ni de table d'anonymisation.
+# ---------------------------------------------------------------------------
+# Ne JAMAIS committer de configuration réelle, de mapping réel, de rapport
+# ni de table d'anonymisation. Travailler dans le dossier work/ (ignoré).
+# ---------------------------------------------------------------------------
 *.SENSIBLE.*
-/out/
 /work/
+/out/
+/sortie/
+# Fichiers réels déposés par erreur à la racine du projet
+/*.conf
+/*.txt
+/mapping.toml
+/report.md
+/report.json
