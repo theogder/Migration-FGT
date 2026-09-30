@@ -50,7 +50,7 @@ def convert(source: Document, target: Document, mapping: Mapping, rules: list[Ru
         report.warn(f"lecture de target-default.conf : {warning}")
 
     replace_header(source, target, mapping, report)
-    apply_rules(source, rules, report)
+    apply_rules(source, rules, report, target)
     target_defaults = {e.name: e for _, e in interface_entries(target)}
     rename_interfaces(source, mapping, physical_interfaces(target), report, target_defaults)
     apply_target_defaults(source, target, mapping, report)

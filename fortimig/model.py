@@ -150,3 +150,22 @@ def walk(
         yield path, node
         if isinstance(node, (ConfigBlock, Edit)):
             yield from walk(node.children, path)
+
+
+def detach(node: Node) -> None:
+    """Oublie le texte brut d'un nœud copié d'un autre document.
+
+    Le nœud (et ses descendants) sera régénéré dans le style du document qui
+    le reçoit (indentation, fins de ligne).
+    """
+    if isinstance(node, Command):
+        node.raw = None
+        node.indent = None
+        node._sig = None
+    elif isinstance(node, (ConfigBlock, Edit)):
+        node.raw_open = None
+        node.raw_close = None
+        node.indent = None
+        node._sig = None
+        for child in node.children:
+            detach(child)

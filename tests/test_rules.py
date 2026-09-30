@@ -136,12 +136,53 @@ def test_invalid_rules(text: str, message: str) -> None:
 
 def test_repository_rules_file() -> None:
     loaded = {r.chain: r for r in load_rules(ROOT / "rules.toml")}
-    # npu : existe sur le 120G, seulement signalé.
-    assert loaded[(("system", "npu"),)].action == "flag"
+    # npu : propre au 120G, absent du 300E : repris de la cible (constat du lab).
+    npu = loaded[(("system", "npu"),)]
+    assert npu.action == "keep_target" and "HA" in npu.reason
     # np6 : refusé par le 120G de lab (config-error-log), supprimé.
     np6 = loaded[(("system", "np6"),)]
     assert np6.action == "remove" and "config-error-log" in np6.reason
-    doc = parse(fixture_bytes("target-default.conf").decode())
+
+
+KEEP_NPU = '[[rule]]\npath = "config system npu"\naction = "keep_target"\nreason = "matériel"\n'
+
+
+def target_doc():
+    return parse(fixture_bytes("target-default.conf").decode())
+
+
+def test_keep_target_inserts_missing_block_at_same_place() -> None:
+    doc = parse(fixture_bytes("flat.conf").decode())  # pas de config system npu
     report = Report()
-    apply_rules(doc, list(loaded.values()), report)
-    assert [f.path for f in report.findings] == ["config global > config system npu"]
+    apply_rules(doc, rules(KEEP_NPU), report, target_doc())
+    text = serialize(doc)
+    # Même place relative que sur la cible : juste avant config system interface.
+    assert "set vdom-mode multi-vdom\nend\nconfig system npu\nconfig np-queues\n" in text
+    assert text.index("config system npu") < text.index("config system interface")
+    (f,) = report.findings
+    assert (f.category, f.path, f.reason) == (Category.MODIFIE, "config global > config system npu", "matériel")
+    parse(text)
+
+
+def test_keep_target_keeps_source_block_and_flags_it() -> None:
+    doc = parse(SOURCE)  # contient déjà config system npu
+    report = Report()
+    apply_rules(doc, rules(KEEP_NPU), report, target_doc())
+    assert serialize(doc) == SOURCE
+    assert [(f.category, f.path) for f in report.findings] == [
+        (Category.A_REVOIR, "config global > config system npu")
+    ]
+
+
+def test_keep_target_absent_everywhere_is_a_warning() -> None:
+    doc = parse(fixture_bytes("flat.conf").decode())
+    report = Report()
+    apply_rules(doc, rules('[[rule]]\npath = "config system inexistant"\naction = "keep_target"\nreason = "r"\n'),
+                report, target_doc())
+    assert report.findings == []
+    assert "absent de la source et de target-default.conf" in report.warnings[0]
+
+
+def test_keep_target_rejects_option() -> None:
+    with pytest.raises(RulesError, match="bloc entier"):
+        rules('[[rule]]\npath = "config system npu"\noption = "x"\naction = "keep_target"\nreason = "r"\n')

@@ -152,3 +152,13 @@ def test_duplicate_snmp_index_flagged() -> None:
         "index SNMP 4 porté par plusieurs interfaces (« x1 », « port2 ») : à renuméroter",
     ) in dup
     assert all(f.category is Category.A_REVOIR for f in report.findings if "index SNMP" in f.message)
+
+
+def test_missing_hardware_block_is_flagged() -> None:
+    # flat.conf n'a pas de config system npu ; la cible en a un (sans règle keep_target ici).
+    _, report = convert()
+    r = review(report)
+    (message,) = r["config global > config system npu"]
+    assert "absent de la configuration convertie" in message and "keep_target" in message
+    # Les blocs déjà traités entrée par entrée ne sont pas signalés une seconde fois.
+    assert "config global > config system virtual-switch" not in r

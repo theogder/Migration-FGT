@@ -210,3 +210,11 @@ def test_port_option_identical_to_target_default_not_flagged(tmp_path: Path) -> 
     assert not [e for e in data["entrees"] if e["chemin"].endswith("set dedicated-to")]
     # port1 -> port3 : "set speed 1000full" absent du défaut de port3 : toujours signalé.
     assert [e for e in data["entrees"] if e["chemin"].endswith('edit "port1" > set speed')]
+
+
+def test_convert_restores_target_npu_block(tmp_path: Path) -> None:
+    main(setup(tmp_path))
+    converted = (tmp_path / "out" / "converted.conf").read_text("utf-8")
+    assert "config system npu\nconfig np-queues\nconfig ethernet-type\nedit \"ARP\"\n" in converted
+    data = json.loads((tmp_path / "out" / "report.json").read_text("utf-8"))
+    assert not [e for e in data["entrees"] if e["categorie"] == "A_REVOIR" and e["chemin"].endswith("config system npu")]

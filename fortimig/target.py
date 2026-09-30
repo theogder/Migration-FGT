@@ -21,7 +21,7 @@ import copy
 
 from fortimig.fortios import INTERFACE_BLOCK, interface_entries, is_physical_interface, iter_blocks
 from fortimig.mapping import Mapping
-from fortimig.model import Command, ConfigBlock, Document, Edit, Node, format_path, segment
+from fortimig.model import Command, ConfigBlock, Document, Edit, Node, detach, format_path, segment
 from fortimig.report import Category, Report
 from fortimig.secrets import render_command
 
@@ -48,6 +48,7 @@ def apply_target_defaults(doc: Document, target: Document, mapping: Mapping, rep
     _flag_disappearing_interfaces(target, doc, report)
     _flag_disappearing_objects(target, doc, report)
     _flag_duplicate_snmp_index(doc, report)
+    _flag_missing_default_blocks(target, doc, report)
 
 
 # --- 1. Ports mappés ------------------------------------------------------------
@@ -122,7 +123,7 @@ def _insert_unused_ports(
             )
             continue
         clone = copy.deepcopy(entry)
-        _detach(clone)
+        detach(clone)
         block.children.insert(position, clone)
         position += 1
         report.add(
@@ -152,21 +153,6 @@ def _after_last_physical(block: ConfigBlock) -> int:
         if isinstance(child, Edit) and is_physical_interface(child):
             position = i + 1
     return position
-
-
-def _detach(node: Node) -> None:
-    """Oublie le texte brut d'un nœud copié : il sera régénéré dans le style du document."""
-    if isinstance(node, Command):
-        node.raw = None
-        node.indent = None
-        node._sig = None
-    elif isinstance(node, (ConfigBlock, Edit)):
-        node.raw_open = None
-        node.raw_close = None
-        node.indent = None
-        node._sig = None
-        for child in node.children:
-            _detach(child)
 
 
 # --- 3. Objets par défaut qui disparaîtront --------------------------------------------
@@ -257,4 +243,55 @@ def _flag_duplicate_snmp_index(doc: Document, report: Report) -> None:
                 Category.A_REVOIR,
                 f"{where} > set snmp-index",
                 f"index SNMP {index} porté par plusieurs interfaces ({names}) : à renuméroter",
+            )
+
+
+# --- 5. Blocs par défaut du 120G absents de la configuration convertie ----------------
+
+
+def _scoped_blocks(doc: Document) -> dict[str, dict[tuple[str, ...], tuple[str, ...]]]:
+    """Blocs « config » de premier niveau par portée : {portée: {mots: chemin}}.
+
+    Portées : « global », « vdom <nom> » (toutes les sections du VDOM réunies),
+    ou « racine » pour une configuration mono-VDOM.
+    """
+    scopes: dict[str, dict[tuple[str, ...], tuple[str, ...]]] = {}
+
+    def add(scope: str, prefix: tuple[str, ...], nodes: list[Node]) -> None:
+        for node in nodes:
+            if isinstance(node, ConfigBlock):
+                scopes.setdefault(scope, {}).setdefault(node.words, prefix + (segment(node),))
+
+    for node in doc.children:
+        if isinstance(node, ConfigBlock) and node.words == ("global",):
+            add("global", (segment(node),), node.children)
+        elif isinstance(node, ConfigBlock) and node.words == ("vdom",):
+            for entry in node.children:
+                if isinstance(entry, Edit):
+                    add(f"vdom {entry.name}", (segment(node), segment(entry)), entry.children)
+        elif isinstance(node, ConfigBlock):
+            scopes.setdefault("racine", {}).setdefault(node.words, (segment(node),))
+    return scopes
+
+
+def _flag_missing_default_blocks(target: Document, doc: Document, report: Report) -> None:
+    """Blocs présents dans la configuration par défaut du 120G et absents de la convertie.
+
+    La source et la cible étant dans la même version de FortiOS, un tel écart
+    désigne en général un bloc propre au matériel cible : la restauration le
+    videra sur ce membre, alors qu'un membre neuf l'a encore (checksums HA
+    différents — observé avec « config system npu », DECISIONS.md U14).
+    """
+    converted = _scoped_blocks(doc)
+    for scope, blocks in _scoped_blocks(target).items():
+        present = converted.get(scope, {})
+        for words, path in blocks.items():
+            if words in present or words in DEFAULT_OBJECT_BLOCKS:
+                continue
+            report.add(
+                Category.A_REVOIR,
+                format_path(path),
+                "bloc présent dans la configuration par défaut du 120G, absent de la configuration "
+                "convertie : la restauration le videra. S'il est propre au matériel, le reprendre "
+                "avec une règle « keep_target » dans rules.toml (sinon risque de désynchronisation HA)",
             )

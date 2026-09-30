@@ -9,12 +9,14 @@
 #            s'applique dans tous les VDOM)
 #   option = "nom-option"  (facultatif : vise l'option plutôt que le bloc)
 #   action = "remove" (SUPPRIME) | "flag" (A_REVOIR, aucune modification)
+#            | "keep_target" (bloc absent de la source : repris de la
+#              configuration par défaut du 120G ; bloc entier uniquement)
 #   reason = "pourquoi"
 
 [[rule]]
 path = "config system npu"
-action = "flag"
-reason = "Bloc NPU : présent aussi sur le 120G (config np-queues dans sa configuration par défaut), mais les options NP6 du 300E n'y existent probablement pas toutes. Ne pas supprimer en bloc : valider option par option via le config-error-log."
+action = "keep_target"
+reason = "Bloc NPU propre au 120G (np-queues), absent du 300E : sans lui, la restauration vide le NPU du primaire alors que le secondaire neuf l'a encore ; checksums HA différents et cluster non synchronisé (observé sur le lab)."
 
 [[rule]]
 path = "config system np6"
